@@ -1,4 +1,3 @@
-import Sound from 'react-native-sound';
 import { Audio } from 'expo-av';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -20,15 +19,19 @@ const CLOUDFLARE_ACCOUNT_ID = "83f3a8b0093cf6a624908831023a903d";
 const CLOUDFLARE_API_TOKEN = "oIz8sKeO1vaxMhJWcv2Lc2u7meQNe4uxtNImFdRm";
 const API_URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`;
 
-const constructionSound = new Audio.Sound();
-const choirSound = new Audio.Sound();
+let constructionSound, choirSound;
 
-
-// Stop and start sound helper functions
 const playConstruction = async () => {
   try {
-    await choirSound.stopAsync();
-    await constructionSound.loadAsync(require('../../../assets/sounds/construction.mp3'));
+    if (choirSound) {
+      await choirSound.pauseAsync(); // Pause choir sound
+    }
+
+    if (constructionSound) {
+      await constructionSound.unloadAsync();
+    }
+    constructionSound = new Audio.Sound();
+    await constructionSound.loadAsync(require('../../assets/sounds/construction.mp3'));
     await constructionSound.playAsync();
   } catch (error) {
     console.log('Failed to play construction sound:', error);
@@ -37,13 +40,20 @@ const playConstruction = async () => {
 
 const stopConstruction = async () => {
   try {
-    await constructionSound.stopAsync();
-    await constructionSound.unloadAsync(); // Unload to allow replaying later
-    await choirSound.playAsync();
+    if (constructionSound) {
+      await constructionSound.stopAsync();
+      await constructionSound.unloadAsync();
+    }
+
+    if (choirSound) {
+      await choirSound.playAsync(); // Resume choir sound
+    }
   } catch (error) {
     console.log('Failed to stop construction sound:', error);
   }
 };
+
+
 
 const slides = [
   {
@@ -137,26 +147,46 @@ export default function HomeScreen() {
     }
   };
 
+  const playSound = async () => {
+    await TrackPlayer.reset();
+    await TrackPlayer.add({
+      id: 'choir',
+      url: require('../../assets/sounds/choir.mp3'),
+      title: 'Choir',
+      artist: 'Sound Effects',
+    });
+    await TrackPlayer.play();
+  };
+
   useEffect(() => {
     fetchImage();
-    async function loadSounds() {
+    const setupPlayer = async () => {
       try {
-        await choirSound.loadAsync(require('../../../assets/sounds/choir.mp3'));
+        if (choirSound) {
+          await choirSound.unloadAsync();
+        }
+        choirSound = new Audio.Sound();
+        await choirSound.loadAsync(require('../../assets/sounds/choir.mp3'));
         await choirSound.setIsLoopingAsync(true);
         await choirSound.playAsync();
       } catch (error) {
-        console.log('Failed to load choir sound:', error);
+        console.log('Error setting up player:', error);
       }
-    }
+    };
   
-    loadSounds();
+    setupPlayer();
   
     // Cleanup on unmount
     return () => {
-      choirSound.unloadAsync();
-      constructionSound.unloadAsync();
+      if (choirSound) {
+        choirSound.unloadAsync();
+      }
+      if (constructionSound) {
+        constructionSound.unloadAsync();
+      }
     };
   }, []);
+    
 
   const goToNextSlide = () => {
     if (currentSlide >= slides.length - 1) return;
@@ -186,7 +216,7 @@ export default function HomeScreen() {
       duration: 500,
       useNativeDriver: true
     }).start(async () => {
-      playConstruction(); // Start construction sound
+      await playConstruction(); // Start construction sound
       setCurrentSlide(0);
   
       // Fetch a new image, then fade back in and stop construction sound
@@ -195,12 +225,13 @@ export default function HomeScreen() {
           toValue: 1,
           duration: 500,
           useNativeDriver: true
-        }).start(() => {
-          stopConstruction(); // Stop construction sound when fading in
+        }).start(async () => {
+          await stopConstruction(); // Stop construction sound when fading in
         });
       });
     });
   };
+  
   
   
   
